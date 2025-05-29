@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 现有颜色 -->
+    <color name="background">#FFF5F5F5</color>
+    <color name="text_primary">#FF212121</color>
+    <color name="text_secondary">#FF757575</color>
+    <color name="custom_red">#FF0000</color>
+
+    <!-- 随机背景颜色 -->
+    <color name="random_color_1">#FFCCE5FF</color> <!-- 浅蓝 -->
+    <color name="random_color_2">#FFE5CCFF</color> <!-- 浅紫 -->
+    <color name="random_color_3">#FFFFE5CC</color> <!-- 浅橙 -->
+    <color name="random_color_4">#FFCCFFD9</color> <!-- 浅绿 -->
+    <color name="random_color_5">#FFFFCCCC</color> <!-- 浅红 -->
+</resources>

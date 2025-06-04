@@ -1,23 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string-array name="quotes">
-        <item>用 Python 写一个爬虫，抓取技术博客。</item>
-        <item>尝试用函数式编程重构一个模块。</item>
-        <item>为你的项目添加一个酷炫的 CLI 工具。</item>
-        <item>用 Java 实现一个简单的 REST API。</item>
-        <item>优化一个循环，挑战 O(n) 时间复杂度。</item>
-        <item>花 10 分钟检查日志，找到隐藏的 Bug。</item>
-        <item>用断点调试，探索变量的秘密。</item>
-        <item>重现一个 Bug，记录复现步骤。</item>
-        <item>检查代码注释，确保逻辑清晰。</item>
-        <item>用单元测试覆盖一个疑难模块。</item>
-        <item>深入了解 Java Stream API 的魔法。</item>
-        <item>阅读一本算法书，解锁新技能。</item>
-        <item>学习 Docker，部署你的第一个容器。</item>
-        <item>探索设计模式，提升代码优雅度。</item>
-        <item>刷 3 道 LeetCode，提升思维敏捷性。</item>
-    </string-array>
-
     <string-array name="fortune_levels">
         <item>大吉</item>
         <item>小吉</item>

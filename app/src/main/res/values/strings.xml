@@ -2,15 +2,15 @@
     <string name="app_name">SparkApp</string>
     <string name="default_quote">点击生成以点燃编程灵感！</string>
     <string name="default_fortune_level">中平</string>
-    <string name="default_fortune_good">宜：写代码\n调试</string>
-    <string name="default_fortune_bad">忌：熬夜\n摸鱼</string>
+    <string name="default_fortune_good">宜：写代码\n宜：调试</string>
+    <string name="default_fortune_bad">忌：熬夜\n忌：摸鱼</string>
     <string name="default_check_in_days">连续打卡 0 天</string>
     <string name="check_in_button">签到</string>
-    <string name="generate_button">Generate</string>
-    <string name="save_button">Save</string>
-    <string name="share_button">Share</string>
+    <string name="generate_button">生成</string>
+    <string name="save_button">保存</string>
+    <string name="share_button">分享</string>
     <string name="manage_button">管理</string>
     <string name="check_in_days_format">连续打卡 %1$d 天</string>
-    <string name="stats_format">Generated: %1$d, Saved: %2$d</string>
+    <string name="stats_format">生成: %1$d, 保存: %2$d</string>
     <string name="delete_icon_desc">删除灵感</string>
 </resources>

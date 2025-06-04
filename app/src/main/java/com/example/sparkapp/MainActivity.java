@@ -1,6 +1,5 @@
 package com.example.sparkapp;
 
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -12,20 +11,32 @@ import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.constraintlayout.widget.ConstraintSet;
-import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Random;
+import cn.hutool.json.JSONArray;
+import cn.hutool.json.JSONObject;
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 
 public class MainActivity extends AppCompatActivity {
     private TextView quoteText, statsText, fortuneLevel, fortuneGood, fortuneBad, checkInDays;
     private Button checkInButton, manageButton;
     private ConstraintLayout fortuneLayout;
+    private RecyclerView recyclerView;
     private List<QuoteIdea> mySavedQuotes = new ArrayList<>();
     private QuoteAdapter adapter;
     private String currentQuote = "";
@@ -34,6 +45,10 @@ public class MainActivity extends AppCompatActivity {
     private int consecutiveCheckInDays = 0;
     private long lastCheckInDate = 0;
     private boolean isManageMode = false;
+
+    private static final String APIPASSWORD = "ORBhCzpPCIJWReVOCjhk:msTbNYSXBJlcxHsUOrsS";
+    private static final String API_URL = "https://spark-api-open.xf-yun.com/v2/chat/completions";
+    private final OkHttpClient client = new OkHttpClient();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,26 +65,26 @@ public class MainActivity extends AppCompatActivity {
         checkInButton = findViewById(R.id.checkInButton);
         manageButton = findViewById(R.id.manageButton);
         fortuneLayout = findViewById(R.id.fortuneLayout);
-        RecyclerView recyclerView = findViewById(R.id.savedQuotes);
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        recyclerView.setHasFixedSize(true);
-        adapter = new QuoteAdapter(mySavedQuotes, this::deleteSpark);
-        recyclerView.setAdapter(adapter);
+        recyclerView = findViewById(R.id.savedQuotes);
 
-        // 加载数据
-        loadSparks();
-        loadStats();
+        // 加载签到数据
         loadCheckInData();
+
+        // 临时重置签到数据（调试用，生产环境注释掉）
+        resetCheckInData();
 
         // 检查是否已签到，并动态调整约束
         Calendar calendar = Calendar.getInstance();
-        long currentDate = calendar.get(Calendar.YEAR) * 10000 + (calendar.get(Calendar.MONTH) + 1) * 100 + calendar.get(Calendar.DAY_OF_MONTH);
+        long currentDate = getDateAsLong(calendar);
+        Log.d("CheckIn", "Current Date: " + currentDate + ", Last Check-In Date: " + lastCheckInDate);
         if (lastCheckInDate == currentDate) {
+            Log.d("CheckIn", "User has already checked in today. Showing fortune layout.");
             checkInButton.setVisibility(View.GONE);
             fortuneLayout.setVisibility(View.VISIBLE);
             updateFortune();
             updateQuoteTextConstraint(true);
         } else {
+            Log.d("CheckIn", "User has not checked in today. Showing check-in button.");
             checkInButton.setVisibility(View.VISIBLE);
             fortuneLayout.setVisibility(View.GONE);
             updateQuoteTextConstraint(false);
@@ -95,7 +110,7 @@ public class MainActivity extends AppCompatActivity {
         Button shareButton = findViewById(R.id.shareButton);
 
         generateButton.setOnClickListener(v -> {
-            createNewSpark();
+            new Thread(() -> createNewSpark()).start();
             animateButton(v);
         });
         saveButton.setOnClickListener(v -> {
@@ -108,6 +123,25 @@ public class MainActivity extends AppCompatActivity {
         });
 
         updateStats();
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        recyclerView.setHasFixedSize(true);
+        adapter = new QuoteAdapter(mySavedQuotes, this::deleteSpark);
+        recyclerView.setAdapter(adapter);
+
+        loadSparks();
+        loadStats();
+        updateStats();
+    }
+
+    private long getDateAsLong(Calendar calendar) {
+        long date = calendar.get(Calendar.YEAR) * 10000L + (calendar.get(Calendar.MONTH) + 1) * 100L + calendar.get(Calendar.DAY_OF_MONTH);
+        Log.d("CheckIn", "Calculated Date: " + date + " (Year: " + calendar.get(Calendar.YEAR) + ", Month: " + (calendar.get(Calendar.MONTH) + 1) + ", Day: " + calendar.get(Calendar.DAY_OF_MONTH) + ")");
+        return date;
     }
 
     private void updateQuoteTextConstraint(boolean isCheckedIn) {
@@ -123,51 +157,142 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void createNewSpark() {
-        String[] quotes = getResources().getStringArray(R.array.quotes);
-        currentQuote = quotes[new Random().nextInt(quotes.length)];
-        if (System.currentTimeMillis() % 5 == 0) {
-            currentQuote = createDynamicSpark();
-        }
-        quoteText.setText(currentQuote);
-        quoteText.setAlpha(0f);
-        quoteText.setScaleX(0.8f);
-        quoteText.setScaleY(0.8f);
-        quoteText.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(300).start();
-        generateCount++;
-        updateStats();
-        saveStats();
-        Log.d("Spark", "Generated: " + currentQuote);
+        String prompt = "生成一个编程相关的灵感，简洁有趣，50字以内,避免生成的有标点符号语句，除了逗号和感叹号";
+        callSparkApi(prompt, new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                runOnUiThread(() -> {
+                    currentQuote = "网络错误，生成失败！";
+                    quoteText.setText(currentQuote);
+                    Log.e("Spark", "API Call Failed: " + e.getMessage());
+                });
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(response.body().byteStream()));
+                    StringBuilder fullResponse = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        String parsed = parseSparkResponse(line);
+                        if (!parsed.isEmpty()) {
+                            fullResponse.append(parsed);
+                        }
+                    }
+                    reader.close();
+                    currentQuote = fullResponse.toString().trim();
+                    if (currentQuote.isEmpty()) {
+                        currentQuote = "生成失败，未返回内容";
+                    }
+                    runOnUiThread(() -> {
+                        quoteText.setText(currentQuote);
+                        quoteText.setAlpha(0f);
+                        quoteText.setScaleX(0.8f);
+                        quoteText.setScaleY(0.8f);
+                        quoteText.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(300).start();
+                        generateCount++;
+                        updateStats();
+                        saveStats();
+                        Log.d("Spark", "Generated: " + currentQuote);
+                    });
+                } else {
+                    runOnUiThread(() -> {
+                        String errorMsg = "API 错误：" + response.code();
+                        currentQuote = errorMsg;
+                        quoteText.setText(errorMsg);
+                        Log.e("Spark", errorMsg);
+                    });
+                }
+            }
+        });
     }
 
-    private String createDynamicSpark() {
-        String[] prefixes = {"点燃", "探索", "优化", "调试"};
-        String prefix = prefixes[(int) (System.currentTimeMillis() % prefixes.length)];
-        return prefix + "你的编程灵感！";
+    private void callSparkApi(String prompt, Callback callback) {
+        MediaType JSON = MediaType.parse("application/json; charset=utf-8");
+
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("user", "sparkapp_user");
+        jsonObject.put("model", "x1");
+        JSONArray messagesArray = new JSONArray();
+        JSONObject messageObject = new JSONObject();
+        messageObject.put("role", "user");
+        messageObject.put("content", prompt);
+        messageObject.put("temperature", "0.5");
+        messagesArray.put(messageObject);
+        jsonObject.put("messages", messagesArray);
+        jsonObject.put("stream", true);
+        jsonObject.put("max_tokens", 4096);
+
+        RequestBody body = RequestBody.create(JSON, jsonObject.toString());
+
+        String header = "Authorization: Bearer " + APIPASSWORD;
+
+        Request request = new Request.Builder()
+                .url(API_URL)
+                .post(body)
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Authorization", header)
+                .build();
+
+        client.newCall(request).enqueue(callback);
+    }
+
+    private String parseSparkResponse(String line) {
+        if (line.startsWith("data: ")) {
+            String jsonStr = line.substring(6);
+            if (jsonStr.equals("[DONE]")) {
+                return "";
+            }
+            try {
+                JSONObject json = new JSONObject(jsonStr);
+                JSONArray choices = json.getJSONArray("choices");
+                if (choices != null && !choices.isEmpty()) {
+                    JSONObject choice = choices.getJSONObject(0);
+                    JSONObject delta = choice.getJSONObject("delta");
+                    if (delta != null) {
+                        String content = delta.getStr("content", "");
+                        return content;
+                    }
+                }
+            } catch (Exception e) {
+                Log.e("Spark", "Parse Error: " + e.getMessage());
+            }
+        }
+        return "";
     }
 
     private void checkIn() {
         Calendar calendar = Calendar.getInstance();
-        long currentDate = calendar.get(Calendar.YEAR) * 10000 + (calendar.get(Calendar.MONTH) + 1) * 100 + calendar.get(Calendar.DAY_OF_MONTH);
+        long currentDate = getDateAsLong(calendar);
 
-        // 计算连续签到天数
         if (lastCheckInDate == 0) {
             consecutiveCheckInDays = 1;
         } else {
             Calendar last = Calendar.getInstance();
-            last.setTimeInMillis(lastCheckInDate * 10000L);
+            int yearLast = (int) (lastCheckInDate / 10000);
+            int monthLast = (int) (((lastCheckInDate % 10000) / 100) - 1);
+            int dayLast = (int) (lastCheckInDate % 100);
+            last.set(yearLast, monthLast, dayLast);
+
             Calendar today = Calendar.getInstance();
-            today.setTimeInMillis(currentDate * 10000L);
+            int yearToday = (int) (currentDate / 10000);
+            int monthToday = (int) (((currentDate % 10000) / 100) - 1);
+            int dayToday = (int) (currentDate % 100);
+            today.set(yearToday, monthToday, dayToday);
+
             long diffDays = (today.getTimeInMillis() - last.getTimeInMillis()) / (1000 * 60 * 60 * 24);
             if (diffDays == 1) {
                 consecutiveCheckInDays++;
-            } else {
+            } else if (diffDays > 1) {
                 consecutiveCheckInDays = 1;
             }
         }
+
         lastCheckInDate = currentDate;
         saveCheckInData();
+        Log.d("CheckIn", "After Check-In - Current Date: " + currentDate + ", Last Check-In Date: " + lastCheckInDate + ", Consecutive Days: " + consecutiveCheckInDays);
 
-        // 显示运势
         checkInButton.setVisibility(View.GONE);
         fortuneLayout.setVisibility(View.VISIBLE);
         updateFortune();
@@ -175,25 +300,137 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateFortune() {
+        // 设置运势等级
         Calendar calendar = Calendar.getInstance();
-        long seed = calendar.get(Calendar.YEAR) * 10000 + (calendar.get(Calendar.MONTH) + 1) * 100 + calendar.get(Calendar.DAY_OF_MONTH);
-        Random random = new Random(seed);
-
-        // 运势等级
+        long seed = getDateAsLong(calendar);
+        final Random random = new Random(seed); // 声明为 final
         String[] levels = getResources().getStringArray(R.array.fortune_levels);
         fortuneLevel.setText(levels[random.nextInt(levels.length)]);
 
-        // 宜和忌
-        String[] goodActions = getResources().getStringArray(R.array.fortune_good);
-        String[] badActions = getResources().getStringArray(R.array.fortune_bad);
-        String good1 = goodActions[random.nextInt(goodActions.length)];
-        String good2 = goodActions[random.nextInt(goodActions.length)];
-        String bad1 = badActions[random.nextInt(badActions.length)];
-        String bad2 = badActions[random.nextInt(badActions.length)];
-        fortuneGood.setText("宜：" + good1 + "\n" + good2);
-        fortuneBad.setText("忌：" + bad1 + "\n" + bad2);
+        // 使用 AI 生成“宜”和“忌”
+        new Thread(() -> {
+            // 生成“宜”的内容
+            String goodPrompt = "生成两条适合程序员的今日宜做事项，每条不超过 10 字，逗号分隔，事项必须不同，例如：写代码,调试程序";
+            callSparkApi(goodPrompt, new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    runOnUiThread(() -> {
+                        String[] goodActions = getResources().getStringArray(R.array.fortune_good);
+                        String good1 = goodActions[random.nextInt(goodActions.length)];
+                        String good2 = goodActions[random.nextInt(goodActions.length)];
+                        while (good1.equals(good2)) {
+                            good2 = goodActions[random.nextInt(goodActions.length)]; // 内部变量，无需 final
+                        }
+                        fortuneGood.setText("宜：" + good1 + "\n宜：" + good2);
+                        Log.e("Fortune", "API Failed for Good Actions: " + e.getMessage());
+                    });
+                }
 
-        // 签到天数
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(response.body().byteStream()));
+                        StringBuilder fullResponse = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            String parsed = parseSparkResponse(line);
+                            if (!parsed.isEmpty()) {
+                                fullResponse.append(parsed);
+                            }
+                        }
+                        reader.close();
+                        String result = fullResponse.toString().trim();
+                        Log.d("Fortune", "Good Actions Result: " + result);
+                        if (result.isEmpty()) {
+                            result = "写代码,调试程序";
+                        }
+                        String[] goodActions = result.split(",");
+                        if (goodActions.length < 2) {
+                            result = "写代码,调试程序";
+                            goodActions = result.split(",");
+                        }
+                        final String good1 = goodActions[0].trim(); // 声明为 final
+                        final String good2 = goodActions.length > 1 ? goodActions[1].trim() : "学习新技能";
+                        runOnUiThread(() -> {
+                            fortuneGood.setText("宜：" + good1 + "\n宜：" + good2);
+                        });
+                    } else {
+                        runOnUiThread(() -> {
+                            String[] goodActions = getResources().getStringArray(R.array.fortune_good);
+                            String good1 = goodActions[random.nextInt(goodActions.length)];
+                            String good2 = goodActions[random.nextInt(goodActions.length)];
+                            while (good1.equals(good2)) {
+                                good2 = goodActions[random.nextInt(goodActions.length)];
+                            }
+                            fortuneGood.setText("宜：" + good1 + "\n宜：" + good2);
+                            Log.e("Fortune", "API Error for Good Actions: " + response.code());
+                        });
+                    }
+                }
+            });
+
+            // 生成“忌”的内容
+            String badPrompt = "生成两条适合程序员的今日忌做事项，每条不超过 10 字，逗号分隔，事项必须不同，例如：熬夜编码,忽视测试";
+            callSparkApi(badPrompt, new Callback() {
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    runOnUiThread(() -> {
+                        String[] badActions = getResources().getStringArray(R.array.fortune_bad);
+                        String bad1 = badActions[random.nextInt(badActions.length)];
+                        String bad2 = badActions[random.nextInt(badActions.length)];
+                        while (bad1.equals(bad2)) {
+                            bad2 = badActions[random.nextInt(badActions.length)];
+                        }
+                        fortuneBad.setText("忌：" + bad1 + "\n忌：" + bad2);
+                        Log.e("Fortune", "API Failed for Bad Actions: " + e.getMessage());
+                    });
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(response.body().byteStream()));
+                        StringBuilder fullResponse = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            String parsed = parseSparkResponse(line);
+                            if (!parsed.isEmpty()) {
+                                fullResponse.append(parsed);
+                            }
+                        }
+                        reader.close();
+                        String result = fullResponse.toString().trim();
+                        Log.d("Fortune", "Bad Actions Result: " + result);
+                        if (result.isEmpty()) {
+                            result = "熬夜编码,忽视测试";
+                        }
+                        String[] badActions = result.split(",");
+                        if (badActions.length < 2) {
+                            result = "熬夜编码,忽视测试";
+                            badActions = result.split(",");
+                        }
+                        final String bad1 = badActions[0].trim(); // 声明为 final
+                        final String bad2 = badActions.length > 1 ? badActions[1].trim() : "拖延任务";
+                        runOnUiThread(() -> {
+                            fortuneBad.setText("忌：" + bad1 + "\n忌：" + bad2);
+                        });
+                    } else {
+                        runOnUiThread(() -> {
+                            String[] badActions = getResources().getStringArray(R.array.fortune_bad);
+                            String bad1 = badActions[random.nextInt(badActions.length)];
+                            String bad2 = badActions[random.nextInt(badActions.length)];
+                            while (bad1.equals(bad2)) {
+                                bad2 = badActions[random.nextInt(badActions.length)];
+                            }
+                            fortuneBad.setText("忌：" + bad1 + "\n忌：" + bad2);
+                            Log.e("Fortune", "API Error for Bad Actions: " + response.code());
+                        });
+                    }
+                }
+            });
+        }).start();
+
+        // 更新签到天数
         checkInDays.setText(getString(R.string.check_in_days_format, consecutiveCheckInDays));
     }
 
@@ -204,7 +441,7 @@ public class MainActivity extends AppCompatActivity {
         saveCount = mySavedQuotes.size();
         updateStats();
         saveStats();
-        Log.d("Spark", "Deleted position: " + position);
+        Log.d("SparkApp", "Deleted position: " + position);
     }
 
     private void saveSpark() {
@@ -220,7 +457,7 @@ public class MainActivity extends AppCompatActivity {
             saveCount = mySavedQuotes.size();
             updateStats();
             saveStats();
-            Log.d("Spark", "Saved: " + currentQuote + " with color: " + randomColor);
+            Log.d("SparkApp", "Saved: " + currentQuote + " with color: " + randomColor);
         }
     }
 
@@ -230,7 +467,7 @@ public class MainActivity extends AppCompatActivity {
             shareIntent.setType("text/plain");
             shareIntent.putExtra(Intent.EXTRA_TEXT, currentQuote);
             startActivity(Intent.createChooser(shareIntent, "分享灵感"));
-            Log.d("Spark", "Sharing: " + currentQuote);
+            Log.d("SparkApp", "Shared: " + currentQuote);
         }
     }
 
@@ -254,10 +491,10 @@ public class MainActivity extends AppCompatActivity {
 
     private void loadSparks() {
         SharedPreferences prefs = getSharedPreferences("SparkApp2025", MODE_PRIVATE);
-        String json = prefs.getString("my_unique_sparks", "");
-        if (!json.isEmpty()) {
+        String jsonString = prefs.getString("my_unique_sparks", "");
+        if (!jsonString.isEmpty()) {
             Gson gson = new Gson();
-            mySavedQuotes = gson.fromJson(json, new TypeToken<List<QuoteIdea>>(){}.getType());
+            mySavedQuotes = gson.fromJson(jsonString, new TypeToken<List<QuoteIdea>>(){}.getType());
             adapter.updateQuotes(mySavedQuotes);
             saveCount = mySavedQuotes.size();
         }
@@ -284,12 +521,34 @@ public class MainActivity extends AppCompatActivity {
         editor.putLong("last_check_in_date", lastCheckInDate);
         editor.putInt("consecutive_check_in_days", consecutiveCheckInDays);
         editor.apply();
+        Log.d("CheckIn", "Saved Check-In Data - Last Check-In Date: " + lastCheckInDate + ", Consecutive Days: " + consecutiveCheckInDays);
     }
 
     private void loadCheckInData() {
         SharedPreferences prefs = getSharedPreferences("SparkApp2025", MODE_PRIVATE);
         lastCheckInDate = prefs.getLong("last_check_in_date", 0);
         consecutiveCheckInDays = prefs.getInt("consecutive_check_in_days", 0);
+        Log.d("CheckIn", "Loaded Check-In Data - Last Check-In Date: " + lastCheckInDate + ", Consecutive Days: " + consecutiveCheckInDays);
+    }
+
+    private void resetCheckInData() {
+        SharedPreferences prefs = getSharedPreferences("SparkApp2025", MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.putLong("last_check_in_date", 0);
+        editor.putInt("consecutive_check_in_days", 0);
+        editor.apply();
+        lastCheckInDate = 0;
+        consecutiveCheckInDays = 0;
+        Log.d("CheckIn", "Reset Check-In Data - Last Check-In Date: " + lastCheckInDate + ", Consecutive Days: " + consecutiveCheckInDays);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        Thread.setDefaultUncaughtExceptionHandler((thread, ex) -> {
+            Log.e("CrashHandler", "Uncaught Exception: " + ex.getMessage(), ex);
+            finish();
+        });
     }
 
     @Override

@@ -5,7 +5,11 @@ plugins {
 android {
     namespace = "com.example.sparkapp"
     compileSdk = 35
-
+    packaging {
+        resources {
+            excludes += "/META-INF/INDEX.LIST"
+        }
+    }
     defaultConfig {
         applicationId = "com.example.sparkapp"
         minSdk = 24
@@ -42,4 +46,6 @@ dependencies {
     implementation(libs.jsoup)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
+    implementation(libs.hutool.json)
+    implementation(libs.okhttp)
 }

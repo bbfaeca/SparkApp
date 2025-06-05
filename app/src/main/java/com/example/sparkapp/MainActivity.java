@@ -157,7 +157,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void createNewSpark() {
-        String prompt = "生成一个编程相关的灵感，简洁有趣，50字以内,避免生成的有标点符号语句，除了逗号和感叹号";
+        String prompt = "生成一个编程相关的灵感，简洁有趣，严格保证在20字以内,除了逗号和感叹号避免生成的有标点符号语句,也可以用空格隔开，避免生成有序号的话，尽量避免产生有换行的语句";
         callSparkApi(prompt, new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
@@ -303,7 +303,7 @@ public class MainActivity extends AppCompatActivity {
         // 设置运势等级
         Calendar calendar = Calendar.getInstance();
         long seed = getDateAsLong(calendar);
-        final Random random = new Random(seed); // 声明为 final
+        final Random random = new Random(seed);
         String[] levels = getResources().getStringArray(R.array.fortune_levels);
         fortuneLevel.setText(levels[random.nextInt(levels.length)]);
 

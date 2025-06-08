@@ -13,4 +13,11 @@
     <string name="check_in_days_format">连续打卡 %1$d 天</string>
     <string name="stats_format">生成: %1$d, 保存: %2$d</string>
     <string name="delete_icon_desc">删除灵感</string>
+    <string name="challenge_title">每日挑战</string>
+    <string name="challenge_loading">加载中...</string>
+    <string name="more_button">更多</string>
+    <string name="view_saved_quotes">查看保存的灵感</string>
+    <string name="my_favorites">我的收藏</string>
+    <string name="search_hint">输入题目名称或编号</string>
+    <string name="search_results_description">搜索结果列表</string>
 </resources>

@@ -5,6 +5,9 @@
     <color name="text_primary">#FF212121</color>
     <color name="text_secondary">#FF757575</color>
     <color name="custom_red">#FF0000</color>
+    <color name="yellow">#FFFF00</color>
+    <color name="lightYellow">#FFF9E6</color>
+    <color name="colorAccent">#2196F3</color>
 
     <!-- 随机背景颜色 -->
     <color name="random_color_1">#FFCCE5FF</color> <!-- 浅蓝 -->

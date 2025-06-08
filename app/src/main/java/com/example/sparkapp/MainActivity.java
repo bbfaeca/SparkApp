@@ -8,11 +8,9 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.LinearLayout;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.constraintlayout.widget.ConstraintLayout;
-import androidx.constraintlayout.widget.ConstraintSet;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import java.io.BufferedReader;
@@ -31,24 +29,29 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 public class MainActivity extends AppCompatActivity {
-    private TextView quoteText, statsText, fortuneLevel, fortuneGood, fortuneBad, checkInDays;
-    private Button checkInButton, manageButton;
+    private TextView quoteText, fortuneLevel, fortuneGood, fortuneBad, checkInDays;
+    private Button checkInButton, viewSavedQuotesButton, viewFavoritesButton;
     private ConstraintLayout fortuneLayout;
-    private RecyclerView recyclerView;
+    private LinearLayout buttonLayout;
     private List<QuoteIdea> mySavedQuotes = new ArrayList<>();
-    private QuoteAdapter adapter;
     private String currentQuote = "";
-    private int generateCount = 0;
-    private int saveCount = 0;
     private int consecutiveCheckInDays = 0;
     private long lastCheckInDate = 0;
-    private boolean isManageMode = false;
 
-    private static final String APIPASSWORD = "ORBhCzpPCIJWReVOCjhk:msTbNYSXBJlcxHsUOrsS";
-    private static final String API_URL = "https://spark-api-open.xf-yun.com/v2/chat/completions";
+    // 每日挑战相关视图
+    private TextView challengeTitle, challengeItem1, challengeItem2, challengeItem3, challengeItem4;
+    private Button starButton1, starButton2, starButton3, starButton4;
+    private LinearLayout moreButtonLayout;
+
+    private static final String LUOGU_API_URL = "https://www.luogu.com.cn/problem/list"; // 洛谷题目列表端点
     private final OkHttpClient client = new OkHttpClient();
+
+    // 每日挑战历史数据
+    public static final String DAILY_CHALLENGES_KEY = "daily_challenges_history";
+    private static final int DAYS_TO_KEEP = 7;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,15 +60,27 @@ public class MainActivity extends AppCompatActivity {
 
         // 初始化 UI
         quoteText = findViewById(R.id.quoteText);
-        statsText = findViewById(R.id.statsText);
         fortuneLevel = findViewById(R.id.fortuneLevel);
         fortuneGood = findViewById(R.id.fortuneGood);
         fortuneBad = findViewById(R.id.fortuneBad);
         checkInDays = findViewById(R.id.checkInDays);
         checkInButton = findViewById(R.id.checkInButton);
-        manageButton = findViewById(R.id.manageButton);
+        viewSavedQuotesButton = findViewById(R.id.viewSavedQuotesButton);
+        viewFavoritesButton = findViewById(R.id.viewFavoritesButton);
         fortuneLayout = findViewById(R.id.fortuneLayout);
-        recyclerView = findViewById(R.id.savedQuotes);
+        buttonLayout = findViewById(R.id.buttonLayout);
+
+        // 初始化每日挑战相关视图
+        challengeTitle = findViewById(R.id.challengeTitle);
+        challengeItem1 = findViewById(R.id.challengeItem1);
+        challengeItem2 = findViewById(R.id.challengeItem2);
+        challengeItem3 = findViewById(R.id.challengeItem3);
+        challengeItem4 = findViewById(R.id.challengeItem4);
+        starButton1 = findViewById(R.id.starButton1);
+        starButton2 = findViewById(R.id.starButton2);
+        starButton3 = findViewById(R.id.starButton3);
+        starButton4 = findViewById(R.id.starButton4);
+        moreButtonLayout = findViewById(R.id.moreButtonLayout);
 
         // 加载签到数据
         loadCheckInData();
@@ -73,7 +88,7 @@ public class MainActivity extends AppCompatActivity {
         // 临时重置签到数据（调试用，生产环境注释掉）
         resetCheckInData();
 
-        // 检查是否已签到，并动态调整约束
+        // 检查是否已签到
         Calendar calendar = Calendar.getInstance();
         long currentDate = getDateAsLong(calendar);
         Log.d("CheckIn", "Current Date: " + currentDate + ", Last Check-In Date: " + lastCheckInDate);
@@ -82,12 +97,10 @@ public class MainActivity extends AppCompatActivity {
             checkInButton.setVisibility(View.GONE);
             fortuneLayout.setVisibility(View.VISIBLE);
             updateFortune();
-            updateQuoteTextConstraint(true);
         } else {
             Log.d("CheckIn", "User has not checked in today. Showing check-in button.");
             checkInButton.setVisibility(View.VISIBLE);
             fortuneLayout.setVisibility(View.GONE);
-            updateQuoteTextConstraint(false);
         }
 
         // 签到按钮
@@ -96,11 +109,17 @@ public class MainActivity extends AppCompatActivity {
             animateButton(v);
         });
 
-        // 管理按钮
-        manageButton.setOnClickListener(v -> {
-            isManageMode = !isManageMode;
-            adapter.setManageMode(isManageMode);
-            manageButton.setText(isManageMode ? "完成" : "管理");
+        // 查看保存的灵感按钮
+        viewSavedQuotesButton.setOnClickListener(v -> {
+            Intent intent = new Intent(MainActivity.this, SavedQuotes.class);
+            startActivity(intent);
+            animateButton(v);
+        });
+
+        // 查看收藏按钮
+        viewFavoritesButton.setOnClickListener(v -> {
+            Intent intent = new Intent(MainActivity.this, FavoriteProblemsActivity.class);
+            startActivity(intent);
             animateButton(v);
         });
 
@@ -122,42 +141,39 @@ public class MainActivity extends AppCompatActivity {
             animateButton(v);
         });
 
-        updateStats();
+        // 更多按钮点击事件
+        moreButtonLayout.setOnClickListener(v -> {
+            Log.d("MainActivity", "More button clicked");
+            Intent intent = new Intent(MainActivity.this, ProblemSearchActivity.class);
+            startActivity(intent);
+            animateButton(v);
+        });
+
+        // 为每日挑战题目添加点击事件和五角星按钮事件
+        setupChallengeClickListeners();
+
+        // 初始化每日挑战
+        updateDailyChallenges();
     }
 
     @Override
     protected void onStart() {
         super.onStart();
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        recyclerView.setHasFixedSize(true);
-        adapter = new QuoteAdapter(mySavedQuotes, this::deleteSpark);
-        recyclerView.setAdapter(adapter);
-
         loadSparks();
-        loadStats();
-        updateStats();
     }
 
-    private long getDateAsLong(Calendar calendar) {
+    private void updateButtonLayoutConstraint(boolean isCheckedIn) {
+        // 不再需要动态调整约束，因为 quoteText 始终可见
+    }
+
+    private static long getDateAsLong(Calendar calendar) {
         long date = calendar.get(Calendar.YEAR) * 10000L + (calendar.get(Calendar.MONTH) + 1) * 100L + calendar.get(Calendar.DAY_OF_MONTH);
         Log.d("CheckIn", "Calculated Date: " + date + " (Year: " + calendar.get(Calendar.YEAR) + ", Month: " + (calendar.get(Calendar.MONTH) + 1) + ", Day: " + calendar.get(Calendar.DAY_OF_MONTH) + ")");
         return date;
     }
 
-    private void updateQuoteTextConstraint(boolean isCheckedIn) {
-        ConstraintSet constraintSet = new ConstraintSet();
-        constraintSet.clone((ConstraintLayout) quoteText.getParent());
-        constraintSet.clear(R.id.quoteText, ConstraintSet.TOP);
-        if (isCheckedIn) {
-            constraintSet.connect(R.id.quoteText, ConstraintSet.TOP, R.id.fortuneLayout, ConstraintSet.BOTTOM, 8);
-        } else {
-            constraintSet.connect(R.id.quoteText, ConstraintSet.TOP, R.id.checkInButton, ConstraintSet.BOTTOM, 8);
-        }
-        constraintSet.applyTo((ConstraintLayout) quoteText.getParent());
-    }
-
     private void createNewSpark() {
-        String prompt = "生成一个编程相关的灵感，简洁有趣，严格保证在20字以内,除了逗号和感叹号避免生成的有标点符号语句,也可以用空格隔开，避免生成有序号的话，尽量避免产生有换行的语句";
+        String prompt = "生成一个编程相关的灵感，简洁有趣，50字以内";
         callSparkApi(prompt, new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
@@ -191,9 +207,6 @@ public class MainActivity extends AppCompatActivity {
                         quoteText.setScaleX(0.8f);
                         quoteText.setScaleY(0.8f);
                         quoteText.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(300).start();
-                        generateCount++;
-                        updateStats();
-                        saveStats();
                         Log.d("Spark", "Generated: " + currentQuote);
                     });
                 } else {
@@ -226,10 +239,10 @@ public class MainActivity extends AppCompatActivity {
 
         RequestBody body = RequestBody.create(JSON, jsonObject.toString());
 
-        String header = "Authorization: Bearer " + APIPASSWORD;
+        String header = "Authorization: Bearer ORBhCzpPCIJWReVOCjhk:msTbNYSXBJlcxHsUOrsS"; // 替换为Spark API 密钥
 
         Request request = new Request.Builder()
-                .url(API_URL)
+                .url("https://spark-api-open.xf-yun.com/v2/chat/completions")
                 .post(body)
                 .addHeader("Content-Type", "application/json")
                 .addHeader("Authorization", header)
@@ -296,20 +309,16 @@ public class MainActivity extends AppCompatActivity {
         checkInButton.setVisibility(View.GONE);
         fortuneLayout.setVisibility(View.VISIBLE);
         updateFortune();
-        updateQuoteTextConstraint(true);
     }
 
     private void updateFortune() {
-        // 设置运势等级
         Calendar calendar = Calendar.getInstance();
         long seed = getDateAsLong(calendar);
         final Random random = new Random(seed);
         String[] levels = getResources().getStringArray(R.array.fortune_levels);
         fortuneLevel.setText(levels[random.nextInt(levels.length)]);
 
-        // 使用 AI 生成“宜”和“忌”
         new Thread(() -> {
-            // 生成“宜”的内容
             String goodPrompt = "生成两条适合程序员的今日宜做事项，每条不超过 10 字，逗号分隔，事项必须不同，例如：写代码,调试程序";
             callSparkApi(goodPrompt, new Callback() {
                 @Override
@@ -319,7 +328,7 @@ public class MainActivity extends AppCompatActivity {
                         String good1 = goodActions[random.nextInt(goodActions.length)];
                         String good2 = goodActions[random.nextInt(goodActions.length)];
                         while (good1.equals(good2)) {
-                            good2 = goodActions[random.nextInt(goodActions.length)]; // 内部变量，无需 final
+                            good2 = goodActions[random.nextInt(goodActions.length)];
                         }
                         fortuneGood.setText("宜：" + good1 + "\n宜：" + good2);
                         Log.e("Fortune", "API Failed for Good Actions: " + e.getMessage());
@@ -349,7 +358,7 @@ public class MainActivity extends AppCompatActivity {
                             result = "写代码,调试程序";
                             goodActions = result.split(",");
                         }
-                        final String good1 = goodActions[0].trim(); // 声明为 final
+                        final String good1 = goodActions[0].trim();
                         final String good2 = goodActions.length > 1 ? goodActions[1].trim() : "学习新技能";
                         runOnUiThread(() -> {
                             fortuneGood.setText("宜：" + good1 + "\n宜：" + good2);
@@ -369,7 +378,6 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
 
-            // 生成“忌”的内容
             String badPrompt = "生成两条适合程序员的今日忌做事项，每条不超过 10 字，逗号分隔，事项必须不同，例如：熬夜编码,忽视测试";
             callSparkApi(badPrompt, new Callback() {
                 @Override
@@ -409,7 +417,7 @@ public class MainActivity extends AppCompatActivity {
                             result = "熬夜编码,忽视测试";
                             badActions = result.split(",");
                         }
-                        final String bad1 = badActions[0].trim(); // 声明为 final
+                        final String bad1 = badActions[0].trim();
                         final String bad2 = badActions.length > 1 ? badActions[1].trim() : "拖延任务";
                         runOnUiThread(() -> {
                             fortuneBad.setText("忌：" + bad1 + "\n忌：" + bad2);
@@ -430,18 +438,7 @@ public class MainActivity extends AppCompatActivity {
             });
         }).start();
 
-        // 更新签到天数
         checkInDays.setText(getString(R.string.check_in_days_format, consecutiveCheckInDays));
-    }
-
-    private void deleteSpark(int position) {
-        mySavedQuotes.remove(position);
-        adapter.updateQuotes(mySavedQuotes);
-        saveSparks();
-        saveCount = mySavedQuotes.size();
-        updateStats();
-        saveStats();
-        Log.d("SparkApp", "Deleted position: " + position);
     }
 
     private void saveSpark() {
@@ -452,11 +449,7 @@ public class MainActivity extends AppCompatActivity {
             Random random = new Random();
             int randomColor = Color.rgb(random.nextInt(256), random.nextInt(256), random.nextInt(256));
             mySavedQuotes.add(new QuoteIdea(currentQuote, randomColor));
-            adapter.updateQuotes(mySavedQuotes);
             saveSparks();
-            saveCount = mySavedQuotes.size();
-            updateStats();
-            saveStats();
             Log.d("SparkApp", "Saved: " + currentQuote + " with color: " + randomColor);
         }
     }
@@ -477,10 +470,6 @@ public class MainActivity extends AppCompatActivity {
                 .start();
     }
 
-    private void updateStats() {
-        statsText.setText(getString(R.string.stats_format, generateCount, saveCount));
-    }
-
     private void saveSparks() {
         SharedPreferences prefs = getSharedPreferences("SparkApp2025", MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
@@ -495,24 +484,7 @@ public class MainActivity extends AppCompatActivity {
         if (!jsonString.isEmpty()) {
             Gson gson = new Gson();
             mySavedQuotes = gson.fromJson(jsonString, new TypeToken<List<QuoteIdea>>(){}.getType());
-            adapter.updateQuotes(mySavedQuotes);
-            saveCount = mySavedQuotes.size();
         }
-    }
-
-    private void saveStats() {
-        SharedPreferences prefs = getSharedPreferences("SparkApp2025", MODE_PRIVATE);
-        SharedPreferences.Editor editor = prefs.edit();
-        editor.putInt("spark_generate_count", generateCount);
-        editor.putInt("spark_save_count", saveCount);
-        editor.apply();
-    }
-
-    private void loadStats() {
-        SharedPreferences prefs = getSharedPreferences("SparkApp2025", MODE_PRIVATE);
-        generateCount = prefs.getInt("spark_generate_count", 0);
-        saveCount = prefs.getInt("spark_save_count", 0);
-        updateStats();
     }
 
     private void saveCheckInData() {
@@ -555,7 +527,359 @@ public class MainActivity extends AppCompatActivity {
     protected void onPause() {
         super.onPause();
         saveSparks();
-        saveStats();
         saveCheckInData();
+    }
+
+    private void updateDailyChallenges() {
+        String url = LUOGU_API_URL + "?type=P&keyword=入门"; // 获取入门级题目作为每日挑战
+        Request request = new Request.Builder()
+                .url(url)
+                .get()
+                .addHeader("x-luogu-type", "content-only") // 符合 DataResponse 要求
+                .addHeader("referer", "https://www.luogu.com.cn/") // 符合非 GET 请求要求（预防未来扩展）
+                .addHeader("user-agent", "SparkApp/1.0") // 避免 python-requests
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                runOnUiThread(() -> {
+                    Log.e("DailyChallenge", "API Call Failed: " + e.getMessage());
+                    challengeItem1.setText("加载失败: " + e.getMessage());
+                    challengeItem2.setText("加载失败: " + e.getMessage());
+                    challengeItem3.setText("加载失败: " + e.getMessage());
+                    challengeItem4.setText("加载失败: " + e.getMessage());
+                    starButton1.setVisibility(View.GONE);
+                    starButton2.setVisibility(View.GONE);
+                    starButton3.setVisibility(View.GONE);
+                    starButton4.setVisibility(View.GONE);
+                });
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                if (response.isSuccessful()) {
+                    try (ResponseBody body = response.body()) {
+                        if (body == null) {
+                            runOnUiThread(() -> {
+                                String errorMsg = "API 响应体为空";
+                                Log.e("DailyChallenge", errorMsg);
+                                challengeItem1.setText(errorMsg);
+                                challengeItem2.setText(errorMsg);
+                                challengeItem3.setText(errorMsg);
+                                challengeItem4.setText(errorMsg);
+                                starButton1.setVisibility(View.GONE);
+                                starButton2.setVisibility(View.GONE);
+                                starButton3.setVisibility(View.GONE);
+                                starButton4.setVisibility(View.GONE);
+                            });
+                            return;
+                        }
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(body.byteStream()));
+                        StringBuilder fullResponse = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            fullResponse.append(line);
+                        }
+                        String result = fullResponse.toString().trim();
+                        Log.d("DailyChallenge", "API Response: " + result);
+                        try {
+                            JSONObject json = new JSONObject(result);
+                            JSONObject currentData = json.getJSONObject("currentData");
+                            if (currentData != null) {
+                                JSONObject problems = currentData.getJSONObject("problems");
+                                if (problems != null) {
+                                    JSONArray problemList = problems.getJSONArray("result");
+                                    if (problemList != null && problemList.size() >= 4) {
+                                        List<ChallengeProblem> dailyChallenges = new ArrayList<>();
+                                        dailyChallenges.add(new ChallengeProblem(problemList.getJSONObject(0).getStr("pid", "P0000"), problemList.getJSONObject(0).getStr("title", "加载失败").replaceAll("\\[.*?\\]", "").trim(), getDifficulty(problemList.getJSONObject(0).getInt("difficulty", 1))));
+                                        dailyChallenges.add(new ChallengeProblem(problemList.getJSONObject(1).getStr("pid", "P0000"), problemList.getJSONObject(1).getStr("title", "加载失败").replaceAll("\\[.*?\\]", "").trim(), getDifficulty(problemList.getJSONObject(1).getInt("difficulty", 1))));
+                                        dailyChallenges.add(new ChallengeProblem(problemList.getJSONObject(2).getStr("pid", "P0000"), problemList.getJSONObject(2).getStr("title", "加载失败").replaceAll("\\[.*?\\]", "").trim(), getDifficulty(problemList.getJSONObject(2).getInt("difficulty", 1))));
+                                        dailyChallenges.add(new ChallengeProblem(problemList.getJSONObject(3).getStr("pid", "P0000"), problemList.getJSONObject(3).getStr("title", "加载失败").replaceAll("\\[.*?\\]", "").trim(), getDifficulty(problemList.getJSONObject(3).getInt("difficulty", 1))));
+
+                                        // 保存当天的挑战
+                                        saveDailyChallenges(dailyChallenges);
+
+                                        runOnUiThread(() -> {
+                                            challengeItem1.setText(dailyChallenges.get(0).getPid() + " " + dailyChallenges.get(0).getTitle() + " (" + dailyChallenges.get(0).getDifficulty() + ")");
+                                            challengeItem1.setTag(problemList.getJSONObject(0));
+                                            starButton1.setTag(dailyChallenges.get(0).getPid());
+                                            starButton1.setVisibility(View.VISIBLE);
+                                            starButton1.setTextColor(isFavorite(dailyChallenges.get(0).getPid()) ? Color.YELLOW : Color.WHITE);
+
+                                            challengeItem2.setText(dailyChallenges.get(1).getPid() + " " + dailyChallenges.get(1).getTitle() + " (" + dailyChallenges.get(1).getDifficulty() + ")");
+                                            challengeItem2.setTag(problemList.getJSONObject(1));
+                                            starButton2.setTag(dailyChallenges.get(1).getPid());
+                                            starButton2.setVisibility(View.VISIBLE);
+                                            starButton2.setTextColor(isFavorite(dailyChallenges.get(1).getPid()) ? Color.YELLOW : Color.WHITE);
+
+                                            challengeItem3.setText(dailyChallenges.get(2).getPid() + " " + dailyChallenges.get(2).getTitle() + " (" + dailyChallenges.get(2).getDifficulty() + ")");
+                                            challengeItem3.setTag(problemList.getJSONObject(2));
+                                            starButton3.setTag(dailyChallenges.get(2).getPid());
+                                            starButton3.setVisibility(View.VISIBLE);
+                                            starButton3.setTextColor(isFavorite(dailyChallenges.get(2).getPid()) ? Color.YELLOW : Color.WHITE);
+
+                                            challengeItem4.setText(dailyChallenges.get(3).getPid() + " " + dailyChallenges.get(3).getTitle() + " (" + dailyChallenges.get(3).getDifficulty() + ")");
+                                            challengeItem4.setTag(problemList.getJSONObject(3));
+                                            starButton4.setTag(dailyChallenges.get(3).getPid());
+                                            starButton4.setVisibility(View.VISIBLE);
+                                            starButton4.setTextColor(isFavorite(dailyChallenges.get(3).getPid()) ? Color.YELLOW : Color.WHITE);
+                                        });
+                                    } else {
+                                        runOnUiThread(() -> {
+                                            challengeItem1.setText("数据不足");
+                                            challengeItem2.setText("数据不足");
+                                            challengeItem3.setText("数据不足");
+                                            challengeItem4.setText("数据不足");
+                                            starButton1.setVisibility(View.GONE);
+                                            starButton2.setVisibility(View.GONE);
+                                            starButton3.setVisibility(View.GONE);
+                                            starButton4.setVisibility(View.GONE);
+                                        });
+                                    }
+                                } else {
+                                    runOnUiThread(() -> {
+                                        challengeItem1.setText("问题数据为空");
+                                        challengeItem2.setText("问题数据为空");
+                                        challengeItem3.setText("问题数据为空");
+                                        challengeItem4.setText("问题数据为空");
+                                        starButton1.setVisibility(View.GONE);
+                                        starButton2.setVisibility(View.GONE);
+                                        starButton3.setVisibility(View.GONE);
+                                        starButton4.setVisibility(View.GONE);
+                                    });
+                                }
+                            } else {
+                                runOnUiThread(() -> {
+                                    challengeItem1.setText("当前数据为空");
+                                    challengeItem2.setText("当前数据为空");
+                                    challengeItem3.setText("当前数据为空");
+                                    challengeItem4.setText("当前数据为空");
+                                    starButton1.setVisibility(View.GONE);
+                                    starButton2.setVisibility(View.GONE);
+                                    starButton3.setVisibility(View.GONE);
+                                    starButton4.setVisibility(View.GONE);
+                                });
+                            }
+                        } catch (Exception e) {
+                            runOnUiThread(() -> {
+                                Log.e("DailyChallenge", "Parse Error: " + e.getMessage() + ", Response: " + result);
+                                challengeItem1.setText("解析失败: " + e.getMessage());
+                                challengeItem2.setText("解析失败: " + e.getMessage());
+                                challengeItem3.setText("解析失败: " + e.getMessage());
+                                challengeItem4.setText("解析失败: " + e.getMessage());
+                                starButton1.setVisibility(View.GONE);
+                                starButton2.setVisibility(View.GONE);
+                                starButton3.setVisibility(View.GONE);
+                                starButton4.setVisibility(View.GONE);
+                            });
+                        }
+                    } catch (IOException e) {
+                        runOnUiThread(() -> {
+                            Log.e("DailyChallenge", "I/O Error: " + e.getMessage());
+                            challengeItem1.setText("I/O 错误: " + e.getMessage());
+                            challengeItem2.setText("I/O 错误: " + e.getMessage());
+                            challengeItem3.setText("I/O 错误: " + e.getMessage());
+                            challengeItem4.setText("I/O 错误: " + e.getMessage());
+                            starButton1.setVisibility(View.GONE);
+                            starButton2.setVisibility(View.GONE);
+                            starButton3.setVisibility(View.GONE);
+                            starButton4.setVisibility(View.GONE);
+                        });
+                    }
+                } else {
+                    runOnUiThread(() -> {
+                        try {
+                            String errorMsg = "API 错误：" + response.code() + " - " + response.message();
+                            Log.e("DailyChallenge", errorMsg + ", Response: " + (response.body() != null ? response.body().string() : "无响应体"));
+                            challengeItem1.setText(errorMsg);
+                            challengeItem2.setText(errorMsg);
+                            challengeItem3.setText(errorMsg);
+                            challengeItem4.setText(errorMsg);
+                            starButton1.setVisibility(View.GONE);
+                            starButton2.setVisibility(View.GONE);
+                            starButton3.setVisibility(View.GONE);
+                            starButton4.setVisibility(View.GONE);
+                        } catch (IOException e) {
+                            Log.e("DailyChallenge", "读取错误响应失败: " + e.getMessage());
+                            challengeItem1.setText("读取错误失败");
+                            challengeItem2.setText("读取错误失败");
+                            challengeItem3.setText("读取错误失败");
+                            challengeItem4.setText("读取错误失败");
+                            starButton1.setVisibility(View.GONE);
+                            starButton2.setVisibility(View.GONE);
+                            starButton3.setVisibility(View.GONE);
+                            starButton4.setVisibility(View.GONE);
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+    private void setupChallengeClickListeners() {
+        // 题目点击事件
+        challengeItem1.setOnClickListener(v -> {
+            JSONObject item = (JSONObject) v.getTag();
+            if (item != null) {
+                String pid = item.getStr("pid", "P0000");
+                String title = item.getStr("title", "加载失败").replaceAll("\\[.*?\\]", "").trim();
+                Intent intent = new Intent(MainActivity.this, ProblemDetailActivity.class);
+                intent.putExtra("pid", pid);
+                intent.putExtra("title", title);
+                startActivity(intent);
+            }
+        });
+
+        challengeItem2.setOnClickListener(v -> {
+            JSONObject item = (JSONObject) v.getTag();
+            if (item != null) {
+                String pid = item.getStr("pid", "P0000");
+                String title = item.getStr("title", "加载失败").replaceAll("\\[.*?\\]", "").trim();
+                Intent intent = new Intent(MainActivity.this, ProblemDetailActivity.class);
+                intent.putExtra("pid", pid);
+                intent.putExtra("title", title);
+                startActivity(intent);
+            }
+        });
+
+        challengeItem3.setOnClickListener(v -> {
+            JSONObject item = (JSONObject) v.getTag();
+            if (item != null) {
+                String pid = item.getStr("pid", "P0000");
+                String title = item.getStr("title", "加载失败").replaceAll("\\[.*?\\]", "").trim();
+                Intent intent = new Intent(MainActivity.this, ProblemDetailActivity.class);
+                intent.putExtra("pid", pid);
+                intent.putExtra("title", title);
+                startActivity(intent);
+            }
+        });
+
+        challengeItem4.setOnClickListener(v -> {
+            JSONObject item = (JSONObject) v.getTag();
+            if (item != null) {
+                String pid = item.getStr("pid", "P0000");
+                String title = item.getStr("title", "加载失败").replaceAll("\\[.*?\\]", "").trim();
+                Intent intent = new Intent(MainActivity.this, ProblemDetailActivity.class);
+                intent.putExtra("pid", pid);
+                intent.putExtra("title", title);
+                startActivity(intent);
+            }
+        });
+
+        // 五角星按钮点击事件
+        starButton1.setOnClickListener(v -> toggleFavorite(starButton1));
+        starButton2.setOnClickListener(v -> toggleFavorite(starButton2));
+        starButton3.setOnClickListener(v -> toggleFavorite(starButton3));
+        starButton4.setOnClickListener(v -> toggleFavorite(starButton4));
+    }
+
+    private void toggleFavorite(Button starButton) {
+        String pid = (String) starButton.getTag();
+        if (pid != null) {
+            boolean isCurrentlyFavorite = isFavorite(pid);
+            if (isCurrentlyFavorite) {
+                removeFromFavorites(pid);
+                starButton.setTextColor(Color.WHITE);
+            } else {
+                JSONObject item = (JSONObject) challengeItem1.getTag(); // 假设 tag 一致
+                if (item != null) {
+                    addToFavorites(pid, item.getStr("title", "加载失败").replaceAll("\\[.*?\\]", "").trim(), getDifficulty(item.getInt("difficulty", 1)));
+                    starButton.setTextColor(Color.YELLOW);
+                }
+            }
+            starButton.setEnabled(true);
+        }
+    }
+
+    private boolean isFavorite(String pid) {
+        List<FavoriteProblemsActivity.Problem> favorites = loadFavorites();
+        for (FavoriteProblemsActivity.Problem problem : favorites) {
+            if (problem.getPid().equals(pid)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void addToFavorites(String pid, String title, String difficulty) {
+        FavoriteProblemsActivity.Problem problem = new FavoriteProblemsActivity.Problem(pid, title, difficulty);
+        List<FavoriteProblemsActivity.Problem> favorites = loadFavorites();
+        if (!favorites.contains(problem)) {
+            favorites.add(problem);
+            saveFavorites(favorites);
+        }
+    }
+
+    private void removeFromFavorites(String pid) {
+        List<FavoriteProblemsActivity.Problem> favorites = loadFavorites();
+        favorites.removeIf(problem -> problem.getPid().equals(pid));
+        saveFavorites(favorites);
+    }
+
+    private List<FavoriteProblemsActivity.Problem> loadFavorites() {
+        String jsonString = getSharedPreferences("SparkApp2025", MODE_PRIVATE)
+                .getString("favorite_problems", "[]");
+        Gson gson = new Gson();
+        List<FavoriteProblemsActivity.Problem> favorites = gson.fromJson(jsonString, new TypeToken<List<FavoriteProblemsActivity.Problem>>(){}.getType());
+        return favorites != null ? favorites : new ArrayList<>();
+    }
+
+    private void saveFavorites(List<FavoriteProblemsActivity.Problem> favorites) {
+        Gson gson = new Gson();
+        String jsonString = gson.toJson(favorites);
+        getSharedPreferences("SparkApp2025", MODE_PRIVATE).edit()
+                .putString("favorite_problems", jsonString)
+                .apply();
+    }
+
+    private String getDifficulty(int difficulty) {
+        switch (difficulty) {
+            case 1: return "入门";
+            case 2: return "普及−";
+            case 3: return "普及/提高−";
+            case 4: return "普及+/提高";
+            case 5: return "提高+/省选−";
+            case 6: return "省选/NOI−";
+            default: return "NOI/NOI+/CTSC";
+        }
+    }
+
+    // 每日挑战数据类
+    static class ChallengeProblem {
+        private String pid;
+        private String title;
+        private String difficulty;
+        private long date; // 添加日期以跟踪
+
+        public ChallengeProblem(String pid, String title, String difficulty) {
+            this.pid = pid;
+            this.title = title;
+            this.difficulty = difficulty;
+            // 使用静态方法或传递 MainActivity 实例
+            this.date = getDateAsLong(Calendar.getInstance()); // 改为静态调用
+        }
+
+        public String getPid() { return pid; }
+        public String getTitle() { return title; }
+        public String getDifficulty() { return difficulty; }
+        public long getDate() { return date; }
+    }
+
+    private void saveDailyChallenges(List<ChallengeProblem> challenges) {
+        SharedPreferences prefs = getSharedPreferences("SparkApp2025", MODE_PRIVATE);
+        Gson gson = new Gson();
+        String jsonString = prefs.getString(DAILY_CHALLENGES_KEY, "[]");
+        List<ChallengeProblem> history = gson.fromJson(jsonString, new TypeToken<List<ChallengeProblem>>(){}.getType());
+        if (history == null) history = new ArrayList<>();
+
+        // 移除超过 7 天的记录
+        history.removeIf(problem -> getDateAsLong(Calendar.getInstance()) - problem.getDate() > DAYS_TO_KEEP * 10000L);
+
+        // 添加新数据
+        history.addAll(challenges);
+
+        prefs.edit().putString(DAILY_CHALLENGES_KEY, gson.toJson(history)).apply();
+        Log.d("DailyChallenge", "Saved Daily Challenges: " + gson.toJson(history));
     }
 }

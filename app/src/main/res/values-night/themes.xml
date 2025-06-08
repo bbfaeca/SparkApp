@@ -1,7 +1,19 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Base.Theme.SparkApp" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your dark theme here. -->
-        <!-- <item name="colorPrimary">@color/my_dark_primary</item> -->
+    <style name="Theme.SparkApp" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- 现有背景颜色 -->
+        <item name="android:windowBackground">@color/lightYellow</item>
+        <item name="android:colorBackground">@color/lightYellow</item>
+        <item name="android:statusBarColor">@color/lightYellow</item>
+        <!-- 显式设置按钮样式 -->
+        <item name="materialButtonStyle">@style/Widget.App.Button</item>
+        <item name="buttonStyle">@style/Widget.App.Button</item>
+    </style>
+
+    <!-- 自定义按钮样式 -->
+    <style name="Widget.App.Button" parent="Widget.MaterialComponents.Button">
+        <item name="android:textSize">16sp</item> <!-- 设置文字大小 -->
+        <item name="android:padding">8dp</item> <!-- 设置内边距 -->
+        <item name="android:minHeight">48dp</item> <!-- 最小高度 -->
+        <item name="android:minWidth">48dp</item> <!-- 最小宽度 -->
     </style>
 </resources>

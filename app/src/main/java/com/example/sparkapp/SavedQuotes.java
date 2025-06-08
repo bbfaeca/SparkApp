@@ -64,8 +64,8 @@ public class SavedQuotes extends AppCompatActivity {
 
     private void loadStats() {
         SharedPreferences prefs = getSharedPreferences("SparkApp2025", MODE_PRIVATE);
-        generateCount = prefs.getInt("spark_generate_count", 0);
-        saveCount = mySavedQuotes.size(); // 直接使用 mySavedQuotes 的大小
+        generateCount = prefs.getInt("spark_generate_count", 0); // 加载生成次数
+        saveCount = mySavedQuotes.size(); // 使用当前保存的灵感数量
     }
 
     private void saveSparks() {

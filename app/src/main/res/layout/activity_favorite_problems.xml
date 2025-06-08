@@ -30,7 +30,7 @@
         android:textStyle="bold" />
 </LinearLayout>
 
-    <!-- RecyclerView 列表 -->
+
 <androidx.recyclerview.widget.RecyclerView
 android:id="@+id/recyclerView"
 android:layout_width="0dp"

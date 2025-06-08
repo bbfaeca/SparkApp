@@ -14,7 +14,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import android.graphics.Color;
 
 public class ProblemSearchActivity extends AppCompatActivity {
@@ -54,9 +56,20 @@ public class ProblemSearchActivity extends AppCompatActivity {
         SharedPreferences prefs = getSharedPreferences("SparkApp2025", MODE_PRIVATE);
         String jsonString = prefs.getString(MainActivity.DAILY_CHALLENGES_KEY, "[]");
         Gson gson = new Gson();
-        dailyChallenges = gson.fromJson(jsonString, new TypeToken<List<MainActivity.ChallengeProblem>>(){}.getType());
-        if (dailyChallenges == null) dailyChallenges = new ArrayList<>();
-        Log.d("ProblemSearch", "Loaded Daily Challenges History: " + gson.toJson(dailyChallenges));
+        List<MainActivity.ChallengeProblem> tempChallenges = gson.fromJson(jsonString, new TypeToken<List<MainActivity.ChallengeProblem>>(){}.getType());
+        if (tempChallenges == null) tempChallenges = new ArrayList<>();
+
+        // 去重逻辑：基于 pid
+        Set<String> uniquePids = new HashSet<>();
+        dailyChallenges.clear();
+        for (MainActivity.ChallengeProblem problem : tempChallenges) {
+            if (uniquePids.add(problem.getPid())) { // add 返回 false 表示重复
+                dailyChallenges.add(problem);
+            } else {
+                Log.w("ProblemSearch", "Duplicate pid found and removed: " + problem.getPid());
+            }
+        }
+        Log.d("ProblemSearch", "Loaded Daily Challenges History (after deduplication): " + gson.toJson(dailyChallenges));
     }
 
     private void searchProblems(String query) {
@@ -64,10 +77,11 @@ public class ProblemSearchActivity extends AppCompatActivity {
         if (query.isEmpty()) return;
 
         String lowerQuery = query.toLowerCase();
+        Set<String> addedPids = new HashSet<>(); // 防止搜索结果中重复渲染
         for (MainActivity.ChallengeProblem problem : dailyChallenges) {
             String pid = problem.getPid().toLowerCase();
             String title = problem.getTitle().toLowerCase().replaceAll("\\[.*?\\]", "").trim();
-            if (pid.contains(lowerQuery) || title.contains(lowerQuery)) {
+            if ((pid.contains(lowerQuery) || title.contains(lowerQuery)) && addedPids.add(problem.getPid())) {
                 View itemView = getLayoutInflater().inflate(R.layout.item_problem, searchResults, false);
 
                 TextView problemText = itemView.findViewById(R.id.problemText);
@@ -80,6 +94,9 @@ public class ProblemSearchActivity extends AppCompatActivity {
                 starButton.setOnClickListener(v -> toggleFavorite(starButton, problem.getPid(), problem.getTitle(), problem.getDifficulty()));
 
                 searchResults.addView(itemView);
+                Log.d("ProblemSearch", "Added search result: " + problem.getPid() + " - " + problem.getTitle());
+            } else if (!addedPids.add(problem.getPid())) {
+                Log.w("ProblemSearch", "Skipped duplicate pid in search results: " + problem.getPid());
             }
         }
     }

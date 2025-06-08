@@ -49,7 +49,6 @@
         android:autofillHints="search_query" />
     </LinearLayout>
 
-    <!-- 搜索结果列表，包裹在 ScrollView 中 -->
     <ScrollView
         android:id="@+id/scrollView"
         android:layout_width="0dp"

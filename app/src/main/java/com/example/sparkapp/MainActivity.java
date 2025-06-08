@@ -27,6 +27,9 @@ import okhttp3.Callback;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
@@ -129,15 +132,15 @@ public class MainActivity extends AppCompatActivity {
         Button shareButton = findViewById(R.id.shareButton);
 
         generateButton.setOnClickListener(v -> {
-            new Thread(() -> createNewSpark()).start();
+            new Thread(() -> createNewIdea()).start();
             animateButton(v);
         });
         saveButton.setOnClickListener(v -> {
-            saveSpark();
+            saveIdea();
             animateButton(v);
         });
         shareButton.setOnClickListener(v -> {
-            shareSpark();
+            shareIdea();
             animateButton(v);
         });
 
@@ -159,7 +162,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         super.onStart();
-        loadSparks();
+        loadIdeas();
     }
 
     private void updateButtonLayoutConstraint(boolean isCheckedIn) {
@@ -172,15 +175,15 @@ public class MainActivity extends AppCompatActivity {
         return date;
     }
 
-    private void createNewSpark() {
-        String prompt = "生成一个编程相关的灵感，简洁有趣，50字以内";
-        callSparkApi(prompt, new Callback() {
+    private void createNewIdea() {
+        String prompt = "生成一个编程相关的灵感，简洁有趣，严格保证在20字以内,避免生成除了逗号和感叹号的有标点符号语句,也可以用空格隔开，尽量避免产生有换行的语句";
+        callPpioApi(prompt, new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
                 runOnUiThread(() -> {
                     currentQuote = "网络错误，生成失败！";
                     quoteText.setText(currentQuote);
-                    Log.e("Spark", "API Call Failed: " + e.getMessage());
+                    Log.e("Qwen", "API Call Failed: " + e.getMessage());
                 });
             }
 
@@ -191,7 +194,7 @@ public class MainActivity extends AppCompatActivity {
                     StringBuilder fullResponse = new StringBuilder();
                     String line;
                     while ((line = reader.readLine()) != null) {
-                        String parsed = parseSparkResponse(line);
+                        String parsed = parsePpioResponse(line);
                         if (!parsed.isEmpty()) {
                             fullResponse.append(parsed);
                         }
@@ -207,51 +210,55 @@ public class MainActivity extends AppCompatActivity {
                         quoteText.setScaleX(0.8f);
                         quoteText.setScaleY(0.8f);
                         quoteText.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(300).start();
-                        Log.d("Spark", "Generated: " + currentQuote);
+                        Log.d("Qwen", "Generated: " + currentQuote);
+                        SharedPreferences prefs = getSharedPreferences("SparkApp2025", MODE_PRIVATE);
+                        generateCount = prefs.getInt("spark_generate_count", 0) + 1;
+                        prefs.edit().putInt("spark_generate_count", generateCount).apply();
                     });
                 } else {
                     runOnUiThread(() -> {
                         String errorMsg = "API 错误：" + response.code();
                         currentQuote = errorMsg;
                         quoteText.setText(errorMsg);
-                        Log.e("Spark", errorMsg);
+                        Log.e("Qwen", errorMsg);
                     });
                 }
             }
         });
     }
+    private int generateCount = 0;
 
-    private void callSparkApi(String prompt, Callback callback) {
+    private void callPpioApi(String prompt, Callback callback) {
         MediaType JSON = MediaType.parse("application/json; charset=utf-8");
-
         JSONObject jsonObject = new JSONObject();
-        jsonObject.put("user", "sparkapp_user");
-        jsonObject.put("model", "x1");
+        jsonObject.put("model", "qwen/qwen2.5-7b-instruct");
         JSONArray messagesArray = new JSONArray();
-        JSONObject messageObject = new JSONObject();
-        messageObject.put("role", "user");
-        messageObject.put("content", prompt);
-        messageObject.put("temperature", "0.5");
-        messagesArray.put(messageObject);
+        messagesArray.put(new JSONObject().put("role", "system").put("content", "您是一个专业的 AI 助手，诚实且用中文回答问题。"));
+        messagesArray.put(new JSONObject().put("role", "user").put("content", prompt));
         jsonObject.put("messages", messagesArray);
         jsonObject.put("stream", true);
-        jsonObject.put("max_tokens", 4096);
+        jsonObject.put("max_tokens", 32000);
+        jsonObject.put("temperature", 1);
+        jsonObject.put("top_p", 1);
+        jsonObject.put("top_k", 50);
+        jsonObject.put("repetition_penalty", 1);
+        jsonObject.put("response_format", new JSONObject().put("type", "text"));
 
         RequestBody body = RequestBody.create(JSON, jsonObject.toString());
 
-        String header = "Authorization: Bearer ORBhCzpPCIJWReVOCjhk:msTbNYSXBJlcxHsUOrsS"; // 替换为Spark API 密钥
-
+        // PPIO API 密钥
+        String apiKey = "sk_6WVjXH0nJLf8fP2q9qgYzXjRs_2ASpVd_s47ZS9OFHw";
         Request request = new Request.Builder()
-                .url("https://spark-api-open.xf-yun.com/v2/chat/completions")
+                .url("https://api.ppinfra.com/v3/openai/chat/completions")
                 .post(body)
                 .addHeader("Content-Type", "application/json")
-                .addHeader("Authorization", header)
+                .addHeader("Authorization", "Bearer " + apiKey)
                 .build();
 
         client.newCall(request).enqueue(callback);
     }
 
-    private String parseSparkResponse(String line) {
+    private String parsePpioResponse(String line) {
         if (line.startsWith("data: ")) {
             String jsonStr = line.substring(6);
             if (jsonStr.equals("[DONE]")) {
@@ -269,7 +276,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             } catch (Exception e) {
-                Log.e("Spark", "Parse Error: " + e.getMessage());
+                Log.e("Qwen", "Parse Error: " + e.getMessage());
             }
         }
         return "";
@@ -320,7 +327,7 @@ public class MainActivity extends AppCompatActivity {
 
         new Thread(() -> {
             String goodPrompt = "生成两条适合程序员的今日宜做事项，每条不超过 10 字，逗号分隔，事项必须不同，例如：写代码,调试程序";
-            callSparkApi(goodPrompt, new Callback() {
+            callPpioApi(goodPrompt, new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
                     runOnUiThread(() -> {
@@ -342,7 +349,7 @@ public class MainActivity extends AppCompatActivity {
                         StringBuilder fullResponse = new StringBuilder();
                         String line;
                         while ((line = reader.readLine()) != null) {
-                            String parsed = parseSparkResponse(line);
+                            String parsed = parsePpioResponse(line);
                             if (!parsed.isEmpty()) {
                                 fullResponse.append(parsed);
                             }
@@ -379,7 +386,7 @@ public class MainActivity extends AppCompatActivity {
             });
 
             String badPrompt = "生成两条适合程序员的今日忌做事项，每条不超过 10 字，逗号分隔，事项必须不同，例如：熬夜编码,忽视测试";
-            callSparkApi(badPrompt, new Callback() {
+            callPpioApi(badPrompt, new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
                     runOnUiThread(() -> {
@@ -401,7 +408,7 @@ public class MainActivity extends AppCompatActivity {
                         StringBuilder fullResponse = new StringBuilder();
                         String line;
                         while ((line = reader.readLine()) != null) {
-                            String parsed = parseSparkResponse(line);
+                            String parsed = parsePpioResponse(line);
                             if (!parsed.isEmpty()) {
                                 fullResponse.append(parsed);
                             }
@@ -441,7 +448,7 @@ public class MainActivity extends AppCompatActivity {
         checkInDays.setText(getString(R.string.check_in_days_format, consecutiveCheckInDays));
     }
 
-    private void saveSpark() {
+    private void saveIdea() {
         if (!currentQuote.isEmpty()) {
             if (mySavedQuotes.size() >= 50) {
                 mySavedQuotes.remove(0);
@@ -449,18 +456,18 @@ public class MainActivity extends AppCompatActivity {
             Random random = new Random();
             int randomColor = Color.rgb(random.nextInt(256), random.nextInt(256), random.nextInt(256));
             mySavedQuotes.add(new QuoteIdea(currentQuote, randomColor));
-            saveSparks();
-            Log.d("SparkApp", "Saved: " + currentQuote + " with color: " + randomColor);
+            saveIdeas();
+            Log.d("IdeaApp", "Saved: " + currentQuote + " with color: " + randomColor);
         }
     }
 
-    private void shareSpark() {
+    private void shareIdea() {
         if (!currentQuote.isEmpty()) {
             Intent shareIntent = new Intent(Intent.ACTION_SEND);
             shareIntent.setType("text/plain");
             shareIntent.putExtra(Intent.EXTRA_TEXT, currentQuote);
             startActivity(Intent.createChooser(shareIntent, "分享灵感"));
-            Log.d("SparkApp", "Shared: " + currentQuote);
+            Log.d("IdeaApp", "Shared: " + currentQuote);
         }
     }
 
@@ -470,7 +477,7 @@ public class MainActivity extends AppCompatActivity {
                 .start();
     }
 
-    private void saveSparks() {
+    private void saveIdeas() {
         SharedPreferences prefs = getSharedPreferences("SparkApp2025", MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
         Gson gson = new Gson();
@@ -478,7 +485,7 @@ public class MainActivity extends AppCompatActivity {
         editor.apply();
     }
 
-    private void loadSparks() {
+    private void loadIdeas() {
         SharedPreferences prefs = getSharedPreferences("SparkApp2025", MODE_PRIVATE);
         String jsonString = prefs.getString("my_unique_sparks", "");
         if (!jsonString.isEmpty()) {
@@ -526,18 +533,18 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        saveSparks();
+        saveIdeas();
         saveCheckInData();
     }
 
     private void updateDailyChallenges() {
-        String url = LUOGU_API_URL + "?type=P&keyword=入门"; // 获取入门级题目作为每日挑战
+        String url = LUOGU_API_URL + "?type=P&keyword=入门"; // 入门级题目作为每日挑战
         Request request = new Request.Builder()
                 .url(url)
                 .get()
-                .addHeader("x-luogu-type", "content-only") // 符合 DataResponse 要求
-                .addHeader("referer", "https://www.luogu.com.cn/") // 符合非 GET 请求要求（预防未来扩展）
-                .addHeader("user-agent", "SparkApp/1.0") // 避免 python-requests
+                .addHeader("x-luogu-type", "content-only")
+                .addHeader("referer", "https://www.luogu.com.cn/")
+                .addHeader("user-agent", "SparkApp/1.0")
                 .build();
 
         client.newCall(request).enqueue(new Callback() {
@@ -782,7 +789,7 @@ public class MainActivity extends AppCompatActivity {
                 removeFromFavorites(pid);
                 starButton.setTextColor(Color.WHITE);
             } else {
-                JSONObject item = (JSONObject) challengeItem1.getTag(); // 假设 tag 一致
+                JSONObject item = (JSONObject) challengeItem1.getTag();
                 if (item != null) {
                     addToFavorites(pid, item.getStr("title", "加载失败").replaceAll("\\[.*?\\]", "").trim(), getDifficulty(item.getInt("difficulty", 1)));
                     starButton.setTextColor(Color.YELLOW);
@@ -856,8 +863,7 @@ public class MainActivity extends AppCompatActivity {
             this.pid = pid;
             this.title = title;
             this.difficulty = difficulty;
-            // 使用静态方法或传递 MainActivity 实例
-            this.date = getDateAsLong(Calendar.getInstance()); // 改为静态调用
+            this.date = getDateAsLong(Calendar.getInstance());
         }
 
         public String getPid() { return pid; }
@@ -873,13 +879,24 @@ public class MainActivity extends AppCompatActivity {
         List<ChallengeProblem> history = gson.fromJson(jsonString, new TypeToken<List<ChallengeProblem>>(){}.getType());
         if (history == null) history = new ArrayList<>();
 
+        // 去重
+        Set<String> uniquePids = new HashSet<>();
+        List<ChallengeProblem> deduplicatedHistory = new ArrayList<>();
+        for (ChallengeProblem problem : history) {
+            if (uniquePids.add(problem.getPid())) {
+                deduplicatedHistory.add(problem);
+            }
+        }
+        for (ChallengeProblem problem : challenges) {
+            if (uniquePids.add(problem.getPid())) {
+                deduplicatedHistory.add(problem);
+            }
+        }
+
         // 移除超过 7 天的记录
-        history.removeIf(problem -> getDateAsLong(Calendar.getInstance()) - problem.getDate() > DAYS_TO_KEEP * 10000L);
+        deduplicatedHistory.removeIf(problem -> getDateAsLong(Calendar.getInstance()) - problem.getDate() > DAYS_TO_KEEP * 10000L);
 
-        // 添加新数据
-        history.addAll(challenges);
-
-        prefs.edit().putString(DAILY_CHALLENGES_KEY, gson.toJson(history)).apply();
-        Log.d("DailyChallenge", "Saved Daily Challenges: " + gson.toJson(history));
+        prefs.edit().putString(DAILY_CHALLENGES_KEY, gson.toJson(deduplicatedHistory)).apply();
+        Log.d("DailyChallenge", "Saved Daily Challenges (deduplicated): " + gson.toJson(deduplicatedHistory));
     }
 }

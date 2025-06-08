@@ -100,15 +100,15 @@ public class FavoriteProblemsActivity extends AppCompatActivity {
         @Override
         public void onBindViewHolder(ProblemViewHolder holder, int position) {
             Problem problem = problems.get(position);
-            String cleanTitle = problem.getTitle().replaceAll("\\[.*?\\]", "").trim(); // 去掉括号内容
+            String cleanTitle = problem.getTitle().replaceAll("\\[.*?\\]", "").trim();
             holder.problemText.setText(problem.getPid() + " " + cleanTitle + " (" + problem.getDifficulty() + ")");
             holder.starButton.setTag(problem.getPid());
-            holder.starButton.setTextColor(Color.YELLOW); // 初始为黄色，表示已收藏
+            holder.starButton.setTextColor(Color.YELLOW); // 初始为黄色表示已收藏
             holder.starButton.setOnClickListener(v -> {
                 String pid = (String) v.getTag();
                 favorites.removeIf(p -> p.getPid().equals(pid));
                 saveFavorites();
-                setProblems(favorites); // 更新列表
+                setProblems(favorites);
                 holder.starButton.setTextColor(Color.WHITE); // 变为白色并移除
             });
         }

@@ -26,15 +26,14 @@ import java.io.InputStreamReader;
 public class ProblemDetailActivity extends AppCompatActivity {
     private static final String LUOGU_API_URL = "https://www.luogu.com.cn/problem/";
     private static final OkHttpClient client = new OkHttpClient();
-    private static final String SPARK_API_URL = "https://spark-api-open.xf-yun.com/v2/chat/completions";
-    private static final String SPARK_API_KEY = "ORBhCzpPCIJWReVOCjhk:msTbNYSXBJlcxHsUOrsS"; // 替换为有效的 API 密钥
+    private static final String PPIO_API_URL = "https://api.ppinfra.com/v3/openai/chat/completions";
+    private static final String PPIO_API_KEY = "sk_6WVjXH0nJLf8fP2q9qgYzXjRs_2ASpVd_s47ZS9OFHw"; // PPIO API 密钥
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_problem_detail);
 
-        // 初始化 Toolbar
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         if (getSupportActionBar() != null) {
@@ -93,8 +92,8 @@ public class ProblemDetailActivity extends AppCompatActivity {
                             solutionUrlText.setText("答案网址: https://www.luogu.com.cn/discuss?pid=" + pid);
                         });
 
-                        // 调用星火 AI 获取概述
-                        getSparkOverview(originalDescription, overview -> {
+                        // 调用 PPIO AI 获取概述
+                        getPpioOverview(originalDescription, overview -> {
                             runOnUiThread(() -> {
                                 if (overview != null && !overview.isEmpty()) {
                                     descriptionText.setText("AI 概述: " + overview);
@@ -124,37 +123,38 @@ public class ProblemDetailActivity extends AppCompatActivity {
         });
     }
 
-    // 调用星火 AI 获取概述
-    private void getSparkOverview(String description, CallbackWithResult<String> callback) {
+    // 调用 PPIO AI 获取概述
+    private void getPpioOverview(String description, CallbackWithResult<String> callback) {
         MediaType JSON = MediaType.parse("application/json; charset=utf-8");
-        String prompt = "请简要概述以下编程题目描述（50字以内），让用户大致了解题目内容：" + description;
+        String prompt = "请简要概述以下编程题目描述（100字以内），并说明大概需要什么算法知识，让用户大致了解题目内容：" + description;
 
         JSONObject jsonObject = new JSONObject();
-        jsonObject.put("user", "sparkapp_user");
-        jsonObject.put("model", "x1");
+        jsonObject.put("model", "qwen/qwen2.5-7b-instruct");
         JSONArray messagesArray = new JSONArray();
-        JSONObject messageObject = new JSONObject();
-        messageObject.put("role", "user");
-        messageObject.put("content", prompt);
-        messageObject.put("temperature", "0.5");
-        messagesArray.put(messageObject);
+        messagesArray.put(new JSONObject().put("role", "system").put("content", "您是一个专业的 AI 助手，诚实且用中文回答问题。"));
+        messagesArray.put(new JSONObject().put("role", "user").put("content", prompt));
         jsonObject.put("messages", messagesArray);
         jsonObject.put("stream", true);
-        jsonObject.put("max_tokens", 4096);
+        jsonObject.put("max_tokens", 32000);
+        jsonObject.put("temperature", 1);
+        jsonObject.put("top_p", 1);
+        jsonObject.put("top_k", 50);
+        jsonObject.put("repetition_penalty", 1);
+        jsonObject.put("response_format", new JSONObject().put("type", "text"));
 
         RequestBody body = RequestBody.create(JSON, jsonObject.toString());
 
         Request request = new Request.Builder()
-                .url(SPARK_API_URL)
+                .url(PPIO_API_URL)
                 .post(body)
                 .addHeader("Content-Type", "application/json")
-                .addHeader("Authorization", "Bearer " + SPARK_API_KEY)
+                .addHeader("Authorization", "Bearer " + PPIO_API_KEY)
                 .build();
 
         client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                Log.e("ProblemDetail", "Spark API Call Failed: " + e.getMessage());
+                Log.e("ProblemDetail", "Qwen API Call Failed: " + e.getMessage());
                 callback.onResult("无法生成概述，请稍后重试");
             }
 
@@ -180,7 +180,7 @@ public class ProblemDetailActivity extends AppCompatActivity {
                                         }
                                     }
                                 } catch (Exception e) {
-                                    Log.e("ProblemDetail", "Parse Spark Response Error: " + e.getMessage());
+                                    Log.e("ProblemDetail", "Parse Qwen Response Error: " + e.getMessage());
                                 }
                             }
                         }
@@ -189,7 +189,7 @@ public class ProblemDetailActivity extends AppCompatActivity {
                     String overview = fullResponse.toString().trim();
                     callback.onResult(overview.isEmpty() ? "概述生成失败" : overview);
                 } else {
-                    Log.e("ProblemDetail", "Spark API Error: " + response.code());
+                    Log.e("ProblemDetail", "Qwen API Error: " + response.code());
                     callback.onResult("API 错误: " + response.code());
                 }
             }
